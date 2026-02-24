@@ -146,7 +146,7 @@ class Orchestrator:
         # ── L4: Risk Validation ──────────────────────────────
         logger.info("L4 — Computing risk metrics...")
         state.risk_metrics = await self.risk_engine.compute_risk_metrics(
-            state.positions, state.regime, state.candidates,
+            state.positions, state.regime, state.candidates, nav=nav,
         )
         state.stress_results = self.risk_engine.run_stress_tests(
             state.positions, state.regime,

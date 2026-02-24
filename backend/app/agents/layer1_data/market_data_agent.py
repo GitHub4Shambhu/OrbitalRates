@@ -235,55 +235,49 @@ class MarketDataAgent:
         return prices
 
     def _compute_spread_matrix(self, prices: pd.DataFrame) -> pd.DataFrame:
-        """Compute pairwise yield/price spreads."""
+        """
+        Compute pairwise spreads as log price ratios.
+
+        Using log(P_A / P_B) instead of (norm_A - norm_B) produces a
+        stationary series when two instruments are cointegrated with a
+        hedge ratio close to 1.  This dramatically improves ADF, Hurst,
+        and half-life estimation downstream in L2.
+        """
         if prices.empty:
             return pd.DataFrame()
-        
-        # Normalize prices for spread computation
-        normalized = prices / prices.iloc[0] * 100
-        
-        # Key spreads
-        spreads = pd.DataFrame(index=prices.index)
-        
-        # Duration spreads (long vs short)
-        if "TLT" in normalized and "SHY" in normalized:
-            spreads["TLT_SHY"] = normalized["TLT"] - normalized["SHY"]
-        if "TLT" in normalized and "IEF" in normalized:
-            spreads["TLT_IEF"] = normalized["TLT"] - normalized["IEF"]
-        if "IEF" in normalized and "SHY" in normalized:
-            spreads["IEF_SHY"] = normalized["IEF"] - normalized["SHY"]
-        
-        # Credit spreads
-        if "LQD" in normalized and "GOVT" in normalized:
-            spreads["IG_GOVT"] = normalized["LQD"] - normalized["GOVT"]
-        if "HYG" in normalized and "LQD" in normalized:
-            spreads["HY_IG"] = normalized["HYG"] - normalized["LQD"]
-        
-        # TIPS breakeven proxy
-        if "TIP" in normalized and "IEF" in normalized:
-            spreads["TIPS_BREAKEVEN"] = normalized["TIP"] - normalized["IEF"]
-        
-        # International spreads
-        if "BWX" in normalized and "GOVT" in normalized:
-            spreads["INTL_US"] = normalized["BWX"] - normalized["GOVT"]
-        if "EMB" in normalized and "GOVT" in normalized:
-            spreads["EM_US"] = normalized["EMB"] - normalized["GOVT"]
-        
-        # Floating vs fixed
-        if "FLOT" in normalized and "VCSH" in normalized:
-            spreads["FLOAT_FIXED"] = normalized["FLOT"] - normalized["VCSH"]
-        
-        # MBS spread
-        if "MBB" in normalized and "GOVT" in normalized:
-            spreads["MBS_GOVT"] = normalized["MBB"] - normalized["GOVT"]
-        
-        # Aggregate vs Treasury
-        if "AGG" in normalized and "GOVT" in normalized:
-            spreads["AGG_GOVT"] = normalized["AGG"] - normalized["GOVT"]
 
-        # Long corp vs short corp
-        if "VCLT" in normalized and "VCSH" in normalized:
-            spreads["CORP_CURVE"] = normalized["VCLT"] - normalized["VCSH"]
+        log_prices = np.log(prices.replace(0, np.nan)).dropna()
+
+        # Key spreads — each is log(leg1 / leg2) × 10_000 for bps-like scale
+        spreads = pd.DataFrame(index=log_prices.index)
+        scale = 10_000  # express in bps-equivalent units
+
+        pairs = [
+            # Duration / curve
+            ("TLT_SHY",          "TLT",  "SHY"),
+            ("TLT_IEF",          "TLT",  "IEF"),
+            ("IEF_SHY",          "IEF",  "SHY"),
+            # Credit
+            ("IG_GOVT",          "LQD",  "GOVT"),
+            ("HY_IG",            "HYG",  "LQD"),
+            # Inflation breakeven proxy
+            ("TIPS_BREAKEVEN",   "TIP",  "IEF"),
+            # International
+            ("INTL_US",          "BWX",  "GOVT"),
+            ("EM_US",            "EMB",  "GOVT"),
+            # Floating vs fixed
+            ("FLOAT_FIXED",      "FLOT", "VCSH"),
+            # MBS
+            ("MBS_GOVT",         "MBB",  "GOVT"),
+            # Aggregate vs Treasury
+            ("AGG_GOVT",         "AGG",  "GOVT"),
+            # Corporate curve
+            ("CORP_CURVE",       "VCLT", "VCSH"),
+        ]
+
+        for name, leg1, leg2 in pairs:
+            if leg1 in log_prices.columns and leg2 in log_prices.columns:
+                spreads[name] = (log_prices[leg1] - log_prices[leg2]) * scale
 
         return spreads
 

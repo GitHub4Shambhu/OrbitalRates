@@ -37,6 +37,10 @@ def _state_to_dashboard(state: SystemState, cycle_count: int) -> DashboardRespon
             halflife_tolerance=state.regime.halflife_tolerance,
             regime_duration_days=state.regime.regime_duration_days,
             transition_probability=state.regime.transition_probability,
+            hmm_state_probabilities=state.regime.hmm_state_probabilities,
+            hmm_confidence=state.regime.hmm_confidence,
+            heuristic_regime=state.regime.heuristic_regime,
+            ensemble_agreement=state.regime.ensemble_agreement,
         )
 
     # Risk
@@ -60,6 +64,11 @@ def _state_to_dashboard(state: SystemState, cycle_count: int) -> DashboardRespon
             correlation_risk=r.correlation_risk,
             crowding_risk=r.crowding_risk,
             funding_cost_bps=r.funding_cost_bps,
+            evt_var_99_pct=r.evt_var_99_pct,
+            evt_es_99_pct=r.evt_es_99_pct,
+            evt_shape_parameter=r.evt_shape_parameter,
+            tail_dependence_coeff=r.tail_dependence_coeff,
+            regime_vol_multiplier=r.regime_vol_multiplier,
         )
 
     # Stress
@@ -96,6 +105,11 @@ def _state_to_dashboard(state: SystemState, cycle_count: int) -> DashboardRespon
             tail_1pct_bps=c.tail_1pct_bps,
             signal=c.signal.value,
             rejection_reason=c.rejection_reason,
+            hurst_exponent=c.hurst_exponent,
+            johansen_trace_stat=c.johansen_trace_stat,
+            is_cointegrated=c.is_cointegrated,
+            kalman_hedge_ratio=c.kalman_hedge_ratio,
+            kalman_hedge_ratio_std=c.kalman_hedge_ratio_std,
         )
         for c in state.candidates[:30]  # Top 30
     ]
@@ -148,6 +162,11 @@ def _state_to_dashboard(state: SystemState, cycle_count: int) -> DashboardRespon
             crowding_increase=d.crowding_increase,
             retraining_recommended=d.retraining_recommended,
             parameter_adjustments=d.parameter_adjustments,
+            cusum_statistic=d.cusum_statistic,
+            cusum_alert=d.cusum_alert,
+            ewma_edge_estimate=d.ewma_edge_estimate,
+            forgetting_factor=d.forgetting_factor,
+            bayesian_zscore_threshold=d.bayesian_zscore_threshold,
         )
 
     # Audit

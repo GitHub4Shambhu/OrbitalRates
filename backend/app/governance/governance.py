@@ -147,11 +147,11 @@ class GovernanceLayer:
                 f"minimum {settings.survival_probability_min}"
             )
 
-        # Max stress loss breach
-        if risk_metrics.max_stress_loss_pct > settings.max_drawdown_pct:
+        # Max stress loss breach (separate from running drawdown)
+        if risk_metrics.max_stress_loss_pct > settings.max_stress_loss_pct:
             self.activate_kill_switch(
                 f"Stress loss {risk_metrics.max_stress_loss_pct:.2f}% > "
-                f"max drawdown limit {settings.max_drawdown_pct}%"
+                f"stress limit {settings.max_stress_loss_pct}%"
             )
 
     # ── Validation ───────────────────────────────────────────

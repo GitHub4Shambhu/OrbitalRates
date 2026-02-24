@@ -39,10 +39,10 @@ export default function SpreadOpportunities({ data, total }: { data: SpreadCandi
                 <th className="text-left py-2 px-1">Type</th>
                 <th className="text-right py-2 px-1">Z-Score</th>
                 <th className="text-right py-2 px-1">Halflife</th>
+                <th className="text-right py-2 px-1">Hurst</th>
+                <th className="text-center py-2 px-1">Coint</th>
                 <th className="text-right py-2 px-1">E[R] bps</th>
-                <th className="text-right py-2 px-1">ES bps</th>
                 <th className="text-right py-2 px-1">Liq.</th>
-                <th className="text-right py-2 px-1">Crowd</th>
                 <th className="text-center py-2 px-1">Signal</th>
               </tr>
             </thead>
@@ -57,12 +57,18 @@ export default function SpreadOpportunities({ data, total }: { data: SpreadCandi
                     {s.zscore.toFixed(2)}
                   </td>
                   <td className="py-2 px-1 text-right font-mono text-neutral-300">{s.halflife_days.toFixed(0)}d</td>
+                  <td className={`py-2 px-1 text-right font-mono ${s.hurst_exponent < 0.45 ? "text-emerald-400" : s.hurst_exponent > 0.55 ? "text-red-400" : "text-neutral-300"}`}>
+                    {s.hurst_exponent.toFixed(2)}
+                  </td>
+                  <td className="py-2 px-1 text-center">
+                    <span className={`text-[10px] ${s.is_cointegrated ? "text-emerald-400" : "text-neutral-600"}`}>
+                      {s.is_cointegrated ? "✓" : "✗"}
+                    </span>
+                  </td>
                   <td className={`py-2 px-1 text-right font-mono ${s.expected_return_bps > 0 ? "text-emerald-400" : "text-red-400"}`}>
                     {s.expected_return_bps.toFixed(1)}
                   </td>
-                  <td className="py-2 px-1 text-right font-mono text-red-400">{s.expected_shortfall_bps.toFixed(1)}</td>
                   <td className="py-2 px-1 text-right font-mono text-neutral-300">{(s.liquidity_score * 100).toFixed(0)}%</td>
-                  <td className="py-2 px-1 text-right font-mono text-neutral-300">{(s.crowding_proxy * 100).toFixed(0)}%</td>
                   <td className="py-2 px-1 text-center">
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${SIGNAL_STYLE[s.signal] || ""}`}>
                       {s.signal.toUpperCase().replace("_", " ")}

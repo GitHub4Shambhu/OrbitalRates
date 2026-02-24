@@ -94,6 +94,12 @@ class SpreadCandidate:
     tail_1pct_bps: float
     signal: TradeSignal = TradeSignal.HOLD
     rejection_reason: Optional[str] = None
+    # Advanced discovery fields (state-of-the-art 2025)
+    hurst_exponent: float = 0.5        # <0.5 = mean-reverting, >0.5 = trending
+    johansen_trace_stat: float = 0.0   # Johansen cointegration test statistic
+    is_cointegrated: bool = False       # Johansen test p<0.05
+    kalman_hedge_ratio: float = 1.0    # Dynamic hedge ratio from Kalman filter
+    kalman_hedge_ratio_std: float = 0.0 # Uncertainty in hedge ratio
     timestamp: datetime = field(default_factory=datetime.utcnow)
 
 
@@ -110,6 +116,11 @@ class RegimeState:
     halflife_tolerance: int     # Max acceptable half-life
     regime_duration_days: int   # How long in current regime
     transition_probability: Dict[str, float] = field(default_factory=dict)
+    # HMM-derived fields (state-of-the-art 2025)
+    hmm_state_probabilities: Dict[str, float] = field(default_factory=dict)
+    hmm_confidence: float = 0.0
+    heuristic_regime: str = ""
+    ensemble_agreement: float = 0.0  # 1.0 if HMM + heuristic agree
     timestamp: datetime = field(default_factory=datetime.utcnow)
 
 
@@ -155,6 +166,12 @@ class RiskMetrics:
     correlation_risk: float
     crowding_risk: float
     funding_cost_bps: float
+    # EVT / advanced tail risk fields (state-of-the-art 2025)
+    evt_var_99_pct: float = 0.0        # EVT-based VaR (Generalized Pareto)
+    evt_es_99_pct: float = 0.0         # EVT-based Expected Shortfall
+    evt_shape_parameter: float = 0.0   # GPD shape (xi): >0 = heavy tail
+    tail_dependence_coeff: float = 0.0 # Upper tail dependence (copula)
+    regime_vol_multiplier: float = 1.0 # Current regime vol scaling
     timestamp: datetime = field(default_factory=datetime.utcnow)
 
 
@@ -194,6 +211,12 @@ class DecayMetrics:
     crowding_increase: float
     retraining_recommended: bool
     parameter_adjustments: Dict[str, float] = field(default_factory=dict)
+    # Online learning fields (state-of-the-art 2025)
+    cusum_statistic: float = 0.0          # CUSUM change-point detection stat
+    cusum_alert: bool = False             # True if CUSUM exceeds threshold
+    ewma_edge_estimate: float = 0.0       # Exponentially-weighted moving avg edge
+    forgetting_factor: float = 0.95       # Lambda for exponential forgetting
+    bayesian_zscore_threshold: float = 2.0 # Adaptively shrunk z-score entry
 
 
 @dataclass

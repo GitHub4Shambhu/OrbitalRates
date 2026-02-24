@@ -69,6 +69,20 @@ export default function RiskMetrics({ data }: { data: RiskMetricsType | null }) 
         <Gauge label="Crowding Risk" value={data.crowding_risk} unit="" color="text-neutral-200" />
         <Gauge label="Correlation Risk" value={data.correlation_risk} unit="" color="text-neutral-200" />
       </div>
+
+      {/* EVT / Advanced Tail Risk */}
+      <div className="mt-4 pt-4 border-t border-neutral-800">
+        <p className="text-[10px] text-neutral-500 uppercase tracking-wider mb-3">Extreme Value Theory (GPD)</p>
+        <div className="grid grid-cols-3 gap-3">
+          <Gauge label="EVT VaR 99%" value={data.evt_var_99_pct} unit="%" color="text-orange-400" />
+          <Gauge label="EVT ES 99%" value={data.evt_es_99_pct} unit="%" color="text-red-400" warn={data.evt_es_99_pct > 5} />
+          <Gauge label="GPD Shape (ξ)" value={data.evt_shape_parameter} unit="" color={data.evt_shape_parameter > 0.3 ? "text-red-400" : "text-blue-400"} />
+        </div>
+        <div className="grid grid-cols-2 gap-3 mt-3">
+          <Gauge label="Tail Dependence (λ)" value={data.tail_dependence_coeff} unit="" color={data.tail_dependence_coeff > 0.5 ? "text-red-400" : "text-neutral-300"} />
+          <Gauge label="Regime Vol ×" value={data.regime_vol_multiplier} unit="×" color={data.regime_vol_multiplier > 2 ? "text-amber-400" : "text-neutral-300"} />
+        </div>
+      </div>
     </div>
   );
 }

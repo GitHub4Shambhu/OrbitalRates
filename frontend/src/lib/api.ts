@@ -19,6 +19,11 @@ export interface RegimeData {
   halflife_tolerance: number;
   regime_duration_days: number;
   transition_probability: Record<string, number>;
+  // HMM-derived fields
+  hmm_state_probabilities: Record<string, number>;
+  hmm_confidence: number;
+  heuristic_regime: string;
+  ensemble_agreement: number;
 }
 
 export interface RiskMetrics {
@@ -38,6 +43,12 @@ export interface RiskMetrics {
   correlation_risk: number;
   crowding_risk: number;
   funding_cost_bps: number;
+  // EVT / advanced tail risk fields
+  evt_var_99_pct: number;
+  evt_es_99_pct: number;
+  evt_shape_parameter: number;
+  tail_dependence_coeff: number;
+  regime_vol_multiplier: number;
 }
 
 export interface StressResult {
@@ -68,6 +79,12 @@ export interface SpreadCandidate {
   tail_1pct_bps: number;
   signal: string;
   rejection_reason?: string;
+  // Advanced discovery fields
+  hurst_exponent: number;
+  johansen_trace_stat: number;
+  is_cointegrated: boolean;
+  kalman_hedge_ratio: number;
+  kalman_hedge_ratio_std: number;
 }
 
 export interface Position {
@@ -106,6 +123,12 @@ export interface DecayMetrics {
   crowding_increase: number;
   retraining_recommended: boolean;
   parameter_adjustments: Record<string, number>;
+  // Online learning fields
+  cusum_statistic: number;
+  cusum_alert: boolean;
+  ewma_edge_estimate: number;
+  forgetting_factor: number;
+  bayesian_zscore_threshold: number;
 }
 
 export interface AuditEntry {

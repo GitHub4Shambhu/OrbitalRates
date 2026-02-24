@@ -29,6 +29,12 @@ class SpreadCandidateResponse(BaseModel):
     tail_1pct_bps: float
     signal: str
     rejection_reason: Optional[str] = None
+    # Advanced discovery fields
+    hurst_exponent: float = 0.5
+    johansen_trace_stat: float = 0.0
+    is_cointegrated: bool = False
+    kalman_hedge_ratio: float = 1.0
+    kalman_hedge_ratio_std: float = 0.0
 
 
 # ── Regime ───────────────────────────────────────────────────────
@@ -44,6 +50,11 @@ class RegimeResponse(BaseModel):
     halflife_tolerance: int
     regime_duration_days: int
     transition_probability: Dict[str, float]
+    # HMM-derived fields
+    hmm_state_probabilities: Dict[str, float] = {}
+    hmm_confidence: float = 0.0
+    heuristic_regime: str = ""
+    ensemble_agreement: float = 0.0
 
 
 # ── Risk Metrics ─────────────────────────────────────────────────
@@ -65,6 +76,12 @@ class RiskMetricsResponse(BaseModel):
     correlation_risk: float
     crowding_risk: float
     funding_cost_bps: float
+    # EVT / advanced tail risk fields
+    evt_var_99_pct: float = 0.0
+    evt_es_99_pct: float = 0.0
+    evt_shape_parameter: float = 0.0
+    tail_dependence_coeff: float = 0.0
+    regime_vol_multiplier: float = 1.0
 
 
 class StressResultResponse(BaseModel):
@@ -117,6 +134,12 @@ class DecayResponse(BaseModel):
     crowding_increase: float
     retraining_recommended: bool
     parameter_adjustments: Dict[str, float]
+    # Online learning fields
+    cusum_statistic: float = 0.0
+    cusum_alert: bool = False
+    ewma_edge_estimate: float = 0.0
+    forgetting_factor: float = 0.95
+    bayesian_zscore_threshold: float = 2.0
 
 
 # ── Audit ────────────────────────────────────────────────────────

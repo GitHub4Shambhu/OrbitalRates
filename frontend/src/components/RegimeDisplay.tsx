@@ -74,6 +74,44 @@ export default function RegimeDisplay({ data }: { data: RegimeData | null }) {
           <p className="text-neutral-200 font-mono">{data.halflife_tolerance.toFixed(1)}×</p>
         </div>
       </div>
+
+      {/* HMM Posterior Probabilities */}
+      {data.hmm_state_probabilities && Object.keys(data.hmm_state_probabilities).length > 0 && (
+        <div className="mt-4 pt-4 border-t border-neutral-800">
+          <p className="text-[10px] text-neutral-500 uppercase tracking-wider mb-2">HMM State Posteriors</p>
+          <div className="space-y-1.5">
+            {Object.entries(data.hmm_state_probabilities)
+              .sort(([, a], [, b]) => b - a)
+              .map(([state, prob]) => {
+                const stateCfg = REGIME_CONFIG[state] || REGIME_CONFIG.stable_mean_reverting;
+                return (
+                  <div key={state} className="flex items-center gap-2 text-[10px]">
+                    <span className={`w-16 truncate ${stateCfg.color}`}>
+                      {state.split("_").map(w => w[0].toUpperCase()).join("")}
+                    </span>
+                    <div className="flex-1 h-1 bg-neutral-800 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${stateCfg.color.replace("text-", "bg-")}`}
+                        style={{ width: `${prob * 100}%` }}
+                      />
+                    </div>
+                    <span className="text-neutral-400 font-mono w-10 text-right">
+                      {(prob * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                );
+              })}
+          </div>
+          <div className="mt-2 flex justify-between text-[10px]">
+            <span className="text-neutral-500">
+              HMM Confidence: <span className="text-neutral-300 font-mono">{(data.hmm_confidence * 100).toFixed(0)}%</span>
+            </span>
+            <span className={`${data.ensemble_agreement >= 0.8 ? "text-emerald-400" : "text-amber-400"}`}>
+              {data.ensemble_agreement >= 0.8 ? "✓ Ensemble Agrees" : "⚠ Ensemble Disagrees"}
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

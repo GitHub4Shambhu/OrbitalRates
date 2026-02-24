@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     kelly_fraction_default: float = 0.3
 
     # ── Spread Discovery ─────────────────────────────────────
-    zscore_entry_threshold: float = Field(2.0, description="Z-score to enter trade")
+    zscore_entry_threshold: float = Field(1.5, description="Z-score to enter trade")
     zscore_exit_threshold: float = Field(0.5, description="Z-score to exit trade")
     max_halflife_days: int = Field(90, description="Max acceptable half-life in days")
     min_halflife_days: int = Field(3, description="Min half-life (reject noise)")
@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     crisis_vol_multiplier: float = 2.0
 
     # ── Stress Test Scenarios ────────────────────────────────
+    max_stress_loss_pct: float = Field(25.0, description="Kill switch on worst-case stress loss %")
     stress_spread_widening_bps: float = 200.0
     stress_vol_multiplier: float = 2.0
     stress_correlation_shock: float = 0.95

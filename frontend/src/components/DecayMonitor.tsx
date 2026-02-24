@@ -46,6 +46,35 @@ export default function DecayMonitor({ data }: { data: DecayMetrics | null }) {
         </div>
       </div>
 
+      {/* Online Learning Diagnostics */}
+      <div className="pt-3 border-t border-neutral-800 mb-4">
+        <p className="text-[10px] text-neutral-500 uppercase tracking-wider mb-2">Online Learning</p>
+        <div className="grid grid-cols-3 gap-4">
+          <div className="space-y-1">
+            <div className="flex justify-between text-[10px]">
+              <span className="text-neutral-500">CUSUM</span>
+              <span className={`font-mono ${data.cusum_alert ? "text-red-400 font-bold" : "text-neutral-300"}`}>
+                {data.cusum_statistic.toFixed(2)} {data.cusum_alert ? "⚠" : ""}
+              </span>
+            </div>
+            <div className="h-1 bg-neutral-800 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full ${data.cusum_alert ? "bg-red-500" : data.cusum_statistic > 3 ? "bg-amber-500" : "bg-emerald-500"}`}
+                style={{ width: `${Math.min(100, (data.cusum_statistic / 5) * 100)}%` }}
+              />
+            </div>
+          </div>
+          <div className="text-[10px]">
+            <span className="text-neutral-500">EWMA Edge</span>
+            <p className="text-neutral-200 font-mono">{data.ewma_edge_estimate.toFixed(3)}</p>
+          </div>
+          <div className="text-[10px]">
+            <span className="text-neutral-500">Bayes Z-Threshold</span>
+            <p className="text-neutral-200 font-mono">{data.bayesian_zscore_threshold.toFixed(2)}σ</p>
+          </div>
+        </div>
+      </div>
+
       {Object.keys(data.parameter_adjustments).length > 0 && (
         <div className="pt-3 border-t border-neutral-800">
           <p className="text-[10px] text-neutral-500 mb-2">Auto-Adjustments Applied</p>

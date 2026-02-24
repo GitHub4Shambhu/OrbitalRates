@@ -6,7 +6,13 @@ THE CORE AGENT. Non-negotiable constraints:
   - Max expected shortfall: defined
   - Leverage cap: dynamic
 
-Simulates:
+Advanced features (state-of-the-art 2024/2025):
+  - Extreme Value Theory (Peaks-over-Threshold with GPD)
+  - Regime-switching Monte Carlo with dynamic vol multiplier
+  - Copula-based upper tail dependence estimation
+  - Student-t(df=4) fat-tail simulation baseline
+
+Stress scenarios:
   - 2008-style spread blowout
   - 2020 liquidity seizure
   - Correlation → 1 shock
@@ -18,7 +24,7 @@ If survival probability < 99% annual → REDUCE LEVERAGE. ALWAYS.
 """
 
 import numpy as np
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
 from datetime import datetime
 from loguru import logger
 
@@ -27,6 +33,252 @@ from app.core.types import (
     RiskMetrics, StressResult, PortfolioPosition, RegimeState,
     SpreadCandidate, MarketRegime,
 )
+
+
+# ── Extreme Value Theory: Peaks-over-Threshold + GPD ────────────
+
+class EVTAnalyzer:
+    """
+    Extreme Value Theory analyzer using Peaks-over-Threshold (POT)
+    with Generalized Pareto Distribution (GPD) fitting.
+
+    The GPD models the excess distribution above a high threshold u:
+      P(X - u | X > u) ~ GPD(ξ, σ)
+
+    - ξ > 0: heavy tail (Fréchet domain — financial losses)
+    - ξ = 0: exponential tail
+    - ξ < 0: bounded tail (Weibull domain)
+
+    VaR_q = u + (σ/ξ) * [((n/N_u) * (1-q))^(-ξ) - 1]
+    ES_q  = VaR_q / (1-ξ) + (σ - ξ*u) / (1-ξ)
+    """
+
+    def __init__(self, threshold_quantile: float = 0.95):
+        self.threshold_quantile = threshold_quantile
+
+    def fit(self, losses: np.ndarray) -> Dict[str, float]:
+        """
+        Fit GPD to exceedances above the threshold.
+        Returns dict with evt_var_99, evt_es_99, shape (xi), scale (sigma).
+        """
+        if len(losses) < 50:
+            return {"evt_var_99": 0.0, "evt_es_99": 0.0, "shape": 0.0, "scale": 0.0}
+
+        u = np.percentile(losses, self.threshold_quantile * 100)
+        exceedances = losses[losses > u] - u
+
+        if len(exceedances) < 10:
+            return {"evt_var_99": 0.0, "evt_es_99": 0.0, "shape": 0.0, "scale": 0.0}
+
+        try:
+            from scipy.stats import genpareto
+            # MLE fit
+            shape, loc, scale = genpareto.fit(exceedances, floc=0)
+        except Exception:
+            # Fallback: method of moments
+            mean_exc = np.mean(exceedances)
+            var_exc = np.var(exceedances)
+            if mean_exc <= 0:
+                return {"evt_var_99": 0.0, "evt_es_99": 0.0, "shape": 0.0, "scale": 0.0}
+            shape = 0.5 * (mean_exc ** 2 / var_exc - 1)
+            scale = mean_exc * (1 + shape) / 2
+            shape = max(-0.5, min(shape, 1.0))
+
+        n = len(losses)
+        n_u = len(exceedances)
+        q = 0.99  # 99% quantile
+
+        try:
+            if abs(shape) < 1e-10:
+                # Exponential case
+                evt_var = u + scale * np.log(n * (1 - q) / n_u)
+            else:
+                evt_var = u + (scale / shape) * (((n / n_u) * (1 - q)) ** (-shape) - 1)
+
+            if shape < 1:
+                evt_es = evt_var / (1 - shape) + (scale - shape * u) / (1 - shape)
+            else:
+                evt_es = evt_var * 1.5  # Fallback for very heavy tails
+        except Exception:
+            evt_var = abs(np.percentile(losses, 99))
+            evt_es = evt_var * 1.3
+
+        return {
+            "evt_var_99": float(max(0, evt_var)),
+            "evt_es_99": float(max(0, evt_es)),
+            "shape": float(np.clip(shape, -1.0, 2.0)),
+            "scale": float(max(0, scale)),
+        }
+
+
+# ── Copula-Based Tail Dependence ─────────────────────────────────
+
+def estimate_tail_dependence(losses: np.ndarray, threshold: float = 0.95) -> float:
+    """
+    Estimate upper tail dependence coefficient λ_U using
+    empirical copula approach.
+
+    For portfolio losses, we split into two halves and measure
+    how often extreme losses co-occur (joint tail events).
+
+    λ_U ≈ P(U > q, V > q) / (1 - q)  where U, V are uniform margins.
+
+    Returns value in [0, 1]: 0 = tail independent, 1 = perfect tail dependence.
+    """
+    n = len(losses)
+    if n < 100:
+        return 0.0
+
+    # Split into two sub-portfolios
+    half = n // 2
+    u = losses[:half]
+    v = losses[half:2 * half]
+
+    min_len = min(len(u), len(v))
+    u = u[:min_len]
+    v = v[:min_len]
+
+    # Convert to uniform margins via empirical CDF
+    from scipy.stats import rankdata
+    u_ranks = rankdata(u) / (min_len + 1)
+    v_ranks = rankdata(v) / (min_len + 1)
+
+    # Count joint exceedances
+    joint_exceed = np.sum((u_ranks > threshold) & (v_ranks > threshold))
+    marginal_exceed = np.sum(u_ranks > threshold)
+
+    if marginal_exceed == 0:
+        return 0.0
+
+    lambda_u = joint_exceed / marginal_exceed
+    return float(np.clip(lambda_u, 0.0, 1.0))
+
+
+# ── EVT: Peaks-over-Threshold with GPD ──────────────────────────
+
+class EVTAnalyzer:
+    """
+    Extreme Value Theory analyzer using the Peaks-over-Threshold
+    approach with Generalized Pareto Distribution (GPD) fitting.
+
+    GPD CDF: F(x) = 1 - (1 + ξ·x/σ)^(-1/ξ)
+    where ξ = shape (tail index), σ = scale.
+    ξ > 0 → heavy (Pareto) tail; ξ = 0 → exponential tail.
+    """
+
+    def __init__(self, threshold_quantile: float = 0.95):
+        self.threshold_quantile = threshold_quantile
+
+    def fit(self, losses: np.ndarray) -> Dict[str, float]:
+        """
+        Fit GPD to exceedances over the threshold.
+
+        Returns dict with keys:
+          shape (xi), scale (sigma), threshold (u),
+          evt_var_99, evt_es_99, n_exceedances
+        """
+        if len(losses) < 50:
+            return self._empty_result()
+
+        # Use losses (positive = bad)
+        u = np.percentile(losses, self.threshold_quantile * 100)
+        exceedances = losses[losses > u] - u
+
+        if len(exceedances) < 10:
+            return self._empty_result()
+
+        # Fit GPD via maximum likelihood
+        xi, sigma = self._fit_gpd_mle(exceedances)
+
+        # Compute EVT-based VaR and ES at 99%
+        n = len(losses)
+        n_u = len(exceedances)
+        p_exceed = n_u / n
+
+        # VaR_p = u + (σ/ξ) * ((n/n_u * (1-p))^(-ξ) - 1)
+        p = 0.99
+        if abs(xi) > 1e-8:
+            evt_var = u + (sigma / xi) * (((1 - p) / p_exceed) ** (-xi) - 1)
+            # ES = VaR/(1-ξ) + (σ - ξ*u)/(1-ξ)
+            if xi < 1.0:
+                evt_es = evt_var / (1 - xi) + (sigma - xi * u) / (1 - xi)
+            else:
+                evt_es = evt_var * 1.5  # fallback
+        else:
+            # Exponential tail (xi ≈ 0)
+            evt_var = u + sigma * np.log((1 - p) / p_exceed)
+            evt_es = evt_var + sigma
+
+        return {
+            "shape": float(xi),
+            "scale": float(sigma),
+            "threshold": float(u),
+            "evt_var_99": float(max(0, evt_var)),
+            "evt_es_99": float(max(0, evt_es)),
+            "n_exceedances": int(n_u),
+        }
+
+    def _fit_gpd_mle(self, exceedances: np.ndarray) -> Tuple[float, float]:
+        """Maximum likelihood estimation for GPD parameters."""
+        try:
+            from scipy.stats import genpareto
+            xi, _, sigma = genpareto.fit(exceedances, floc=0)
+            return float(xi), float(sigma)
+        except Exception:
+            # Fallback: method-of-moments
+            mean_e = exceedances.mean()
+            var_e = exceedances.var()
+            if mean_e <= 0:
+                return 0.0, max(0.001, mean_e)
+            sigma = mean_e * (mean_e ** 2 / var_e + 1) / 2
+            xi = (mean_e ** 2 / var_e - 1) / 2
+            return float(np.clip(xi, -0.5, 2.0)), float(max(0.001, sigma))
+
+    def _empty_result(self) -> Dict[str, float]:
+        return {
+            "shape": 0.0, "scale": 0.0, "threshold": 0.0,
+            "evt_var_99": 0.0, "evt_es_99": 0.0, "n_exceedances": 0,
+        }
+
+
+# ── Copula Tail Dependence Estimator ────────────────────────────
+
+def estimate_tail_dependence(losses: np.ndarray, k: int = 50) -> float:
+    """
+    Estimate upper tail dependence coefficient λ_U using the
+    empirical non-parametric estimator:
+
+        λ_U ≈ (1/k) Σ 1[U_i > 1 - k/n AND V_i > 1 - k/n]  /  (k/n)
+
+    For a portfolio loss vector, we split into two halves and
+    measure joint extreme co-movement.
+
+    Returns λ_U ∈ [0, 1] where 0 = tail independence, 1 = perfect tail dependence.
+    """
+    n = len(losses)
+    if n < 100:
+        return 0.0
+
+    # Split portfolio losses into two random subsets for the copula
+    mid = n // 2
+    u = losses[:mid]
+    v = losses[mid:2 * mid]
+    m = len(u)
+
+    if m < 50:
+        return 0.0
+
+    # Rank transform to uniform margins
+    rank_u = np.argsort(np.argsort(u)) / m
+    rank_v = np.argsort(np.argsort(v)) / m
+
+    # Count joint exceedances
+    k = min(k, m // 5)
+    threshold = 1 - k / m
+    joint_exceed = np.sum((rank_u > threshold) & (rank_v > threshold))
+    lambda_u = joint_exceed / max(1, k)
+
+    return float(np.clip(lambda_u, 0.0, 1.0))
 
 
 class TailRiskEngine:
@@ -38,7 +290,8 @@ class TailRiskEngine:
 
     def __init__(self):
         self._risk_history: List[RiskMetrics] = []
-        logger.info("Layer 4 — Tail Risk & Survival Engine initialized")
+        self._evt_analyzer = EVTAnalyzer(threshold_quantile=0.95)
+        logger.info("Layer 4 — Tail Risk & Survival Engine initialized (EVT + Copula enabled)")
 
     # ── Public API ───────────────────────────────────────────
 
@@ -47,9 +300,10 @@ class TailRiskEngine:
         positions: List[PortfolioPosition],
         regime: RegimeState,
         candidates: Optional[List[SpreadCandidate]] = None,
+        nav: float = 100_000_000.0,
     ) -> RiskMetrics:
         """
-        Compute comprehensive portfolio risk metrics.
+        Compute comprehensive portfolio risk metrics with EVT and copula.
         """
         # Portfolio aggregates
         total_dv01 = sum(p.dv01_net for p in positions)
@@ -57,8 +311,7 @@ class TailRiskEngine:
         gross_notional = sum(abs(p.notional) for p in positions)
         net_notional = sum(p.notional for p in positions)
         
-        # Leverage
-        nav = max(gross_notional / settings.max_leverage, 1e6)  # Implied NAV
+        # Leverage — use actual NAV passed in, not an inferred one
         gross_leverage = gross_notional / nav if nav > 0 else 0
         net_leverage = abs(net_notional) / nav if nav > 0 else 0
 
@@ -73,12 +326,23 @@ class TailRiskEngine:
                     if p.spread_id == c.spread_id:
                         expected_return += c.expected_return_bps * p.weight
 
-        # Monte Carlo simulation
+        # ── Regime-switching Monte Carlo ─────────────────────
+        vol_multiplier = self._regime_vol_multiplier(regime)
         mc_losses = self._monte_carlo_simulation(positions, regime, n_sims=10000)
         
-        # VaR & ES
+        # Standard VaR & ES
         var_99 = np.percentile(mc_losses, 1) if len(mc_losses) > 0 else 0
         es_99 = mc_losses[mc_losses <= np.percentile(mc_losses, 1)].mean() if len(mc_losses) > 0 else 0
+
+        # ── EVT: Peaks-over-Threshold with GPD ──────────────
+        # Use the left tail (losses are negative returns)
+        evt_result = self._evt_analyzer.fit(-mc_losses)  # flip sign: positive = loss
+        evt_var_99 = evt_result["evt_var_99"]
+        evt_es_99 = evt_result["evt_es_99"]
+        evt_shape = evt_result["shape"]
+
+        # ── Copula tail dependence ───────────────────────────
+        tail_dep = estimate_tail_dependence(-mc_losses)
 
         # Stress tests
         stress_results = self._run_stress_tests(positions, regime)
@@ -127,6 +391,12 @@ class TailRiskEngine:
             correlation_risk=round(corr_risk, 4),
             crowding_risk=round(crowding, 4),
             funding_cost_bps=round(regime.funding_stress * 50, 2),
+            # EVT / advanced fields
+            evt_var_99_pct=round(evt_var_99 * 100, 4),
+            evt_es_99_pct=round(evt_es_99 * 100, 4),
+            evt_shape_parameter=round(evt_shape, 4),
+            tail_dependence_coeff=round(tail_dep, 4),
+            regime_vol_multiplier=round(vol_multiplier, 2),
         )
 
         self._risk_history.append(metrics)
@@ -189,6 +459,21 @@ class TailRiskEngine:
 
     # ── Monte Carlo ──────────────────────────────────────────
 
+    def _regime_vol_multiplier(self, regime: RegimeState) -> float:
+        """Compute regime-dependent volatility multiplier for MC sims."""
+        base_multipliers = {
+            MarketRegime.STABLE_MEAN_REVERTING: 1.0,
+            MarketRegime.VOLATILE_MEAN_REVERTING: 1.5,
+            MarketRegime.LIQUIDITY_TIGHTENING: 2.0,
+            MarketRegime.STRUCTURAL_SHIFT: 2.5,
+            MarketRegime.CRISIS: 3.0,
+        }
+        mult = base_multipliers.get(regime.regime, 1.0)
+
+        # Blend with HMM confidence: if HMM is very uncertain, add extra vol
+        hmm_uncertainty_premium = max(0, 1.0 - regime.hmm_confidence) * 0.5
+        return mult + hmm_uncertainty_premium
+
     def _monte_carlo_simulation(
         self,
         positions: List[PortfolioPosition],
@@ -197,7 +482,7 @@ class TailRiskEngine:
     ) -> np.ndarray:
         """
         Fat-tail Monte Carlo simulation of portfolio returns.
-        Uses Student-t distribution (df=4) for realistic tails.
+        Uses Student-t distribution (df=4) with regime-switching volatility.
         """
         if not positions:
             return np.zeros(n_sims)
@@ -205,15 +490,7 @@ class TailRiskEngine:
         n_positions = len(positions)
         
         # Regime-adjusted volatility
-        vol_multiplier = 1.0
-        if regime.regime == MarketRegime.VOLATILE_MEAN_REVERTING:
-            vol_multiplier = 1.5
-        elif regime.regime == MarketRegime.LIQUIDITY_TIGHTENING:
-            vol_multiplier = 2.0
-        elif regime.regime == MarketRegime.STRUCTURAL_SHIFT:
-            vol_multiplier = 2.5
-        elif regime.regime == MarketRegime.CRISIS:
-            vol_multiplier = 3.0
+        vol_multiplier = self._regime_vol_multiplier(regime)
 
         # Simulate daily returns (fat-tailed)
         losses = np.zeros(n_sims)
