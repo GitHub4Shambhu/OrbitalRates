@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { DashboardData, fetchDashboard } from "@/lib/api";
+import { MOCK_DASHBOARD } from "@/lib/mockData";
 import RegimeDisplay from "@/components/RegimeDisplay";
 import RiskMetrics from "@/components/RiskMetrics";
 import SpreadOpportunities from "@/components/SpreadOpportunities";
@@ -12,12 +13,22 @@ import GovernancePanel from "@/components/GovernancePanel";
 import DecayMonitor from "@/components/DecayMonitor";
 import DataSourceBadge from "@/components/DataSourceBadge";
 
+type Mode = "live" | "demo";
+
 export default function Home() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
-  const [nav, setNav] = useState(1_000_000_000); // $1B default NAV
+  const [nav, setNav] = useState(1_000_000_000);
+  const [mode, setMode] = useState<Mode>("live");
+
+  const loadMockData = useCallback(() => {
+    setData({ ...MOCK_DASHBOARD, timestamp: new Date().toISOString() });
+    setLastRefresh(new Date());
+    setError(null);
+    setMode("demo");
+  }, []);
 
   const runCycle = useCallback(async () => {
     setLoading(true);
@@ -26,20 +37,35 @@ export default function Home() {
       const result = await fetchDashboard(nav);
       setData(result);
       setLastRefresh(new Date());
+      setMode("live");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Unknown error");
+      // If backend is unavailable, auto-fallback to demo mode
+      console.warn("Backend unavailable, loading demo data:", e);
+      loadMockData();
     } finally {
       setLoading(false);
     }
-  }, [nav]);
+  }, [nav, loadMockData]);
 
-  // Auto-load on mount
   useEffect(() => {
     runCycle();
   }, [runCycle]);
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] text-neutral-100">
+      {/* ── Demo Banner ────────────────────────────────── */}
+      {mode === "demo" && (
+        <div className="bg-amber-500/10 border-b border-amber-500/30 px-6 py-2 text-center">
+          <span className="text-xs text-amber-400">
+            🛰️ <strong>DEMO MODE</strong> — Showing simulated institutional data ·
+            Cycle #847 · $1B NAV · 4 active positions ·
+            <button onClick={runCycle} className="underline ml-1 hover:text-amber-300 transition-colors">
+              Connect to live backend →
+            </button>
+          </span>
+        </div>
+      )}
+
       {/* ── Header ─────────────────────────────────────── */}
       <header className="sticky top-0 z-50 backdrop-blur-xl bg-[var(--bg-primary)]/80 border-b border-neutral-800">
         <div className="max-w-[1600px] mx-auto px-6 py-4 flex items-center justify-between">
@@ -57,6 +83,26 @@ export default function Home() {
           </div>
 
           <div className="flex items-center gap-4">
+            {/* Mode Toggle */}
+            <div className="flex items-center gap-1 bg-neutral-800 rounded-lg p-0.5">
+              <button
+                onClick={loadMockData}
+                className={`px-3 py-1 rounded-md text-[10px] font-bold transition-colors ${
+                  mode === "demo" ? "bg-amber-500/20 text-amber-400" : "text-neutral-500 hover:text-neutral-300"
+                }`}
+              >
+                DEMO
+              </button>
+              <button
+                onClick={runCycle}
+                className={`px-3 py-1 rounded-md text-[10px] font-bold transition-colors ${
+                  mode === "live" ? "bg-blue-500/20 text-blue-400" : "text-neutral-500 hover:text-neutral-300"
+                }`}
+              >
+                LIVE
+              </button>
+            </div>
+
             {/* NAV Input */}
             <div className="flex items-center gap-2">
               <label className="text-[10px] text-neutral-500 uppercase">NAV</label>
@@ -97,11 +143,10 @@ export default function Home() {
 
       {/* ── Main Content ────────────────────────────────── */}
       <main className="max-w-[1600px] mx-auto px-6 py-6">
-        {/* Error State */}
-        {error && (
+        {/* Error State — only shown when both live + demo fail */}
+        {error && !data && (
           <div className="mb-6 p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
             <strong>Error:</strong> {error}
-            <p className="text-xs mt-1 text-red-400/60">Make sure the backend is running at localhost:8000</p>
           </div>
         )}
 
